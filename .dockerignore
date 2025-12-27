@@ -1,0 +1,8 @@
+.env.example
+.venv
+.gitignore
+.git
+LICENSE
+README.md
+ipa-api.log
+__pycache__
