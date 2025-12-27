@@ -1,4 +1,4 @@
-def transliterate(name):
+def transliterate(name: str) -> str:
 
     dictionary = {
     'а': 'a',

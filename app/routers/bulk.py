@@ -1,12 +1,13 @@
 from app.dependencies import user_sessions, get_user_client
 from app.services.freeipa import resolve_username
 from fastapi import APIRouter, Request
+from typing import Dict, List, Any
 
 
 router = APIRouter()
 
 @router.post("/api/v1/users/bulk-delete")
-def bulk_delete_users(identifiers: list[str], request: Request):
+def bulk_delete_users(identifiers: List[str], request: Request) -> Dict[str, List[Dict[str, Any]]]:
     """
     Массовое удаление пользователей
     
@@ -48,7 +49,7 @@ def bulk_delete_users(identifiers: list[str], request: Request):
 
 
 @router.post("/api/v1/users/bulk-disable")
-def bulk_disable_users(identifiers: list[str], request: Request):
+def bulk_disable_users(identifiers: List[str], request: Request) -> Dict[str, List[Dict[str, Any]]]:
     """
     Массовое удаление пользователей
     
@@ -90,7 +91,7 @@ def bulk_disable_users(identifiers: list[str], request: Request):
 
 
 @router.post("/api/v1/users/bulk-enable")
-def bulk_enable_users(identifiers: list[str], request: Request):
+def bulk_enable_users(identifiers: List[str], request: Request) -> Dict[str, List[Dict[str, Any]]]:
     """
     Массовое включение пользователей
     
@@ -132,7 +133,7 @@ def bulk_enable_users(identifiers: list[str], request: Request):
 
 
 @router.post("/api/v1/users/bulk-reset-password")
-def bulk_reset_password(identifiers: list[str], request: Request):
+def bulk_reset_password(identifiers: List[str], request: Request) -> Dict[str, List[Dict[str, Any]]]:
     """
     Массовый сброс паролей пользователей
 

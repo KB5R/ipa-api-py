@@ -1,7 +1,7 @@
 import subprocess
 from app.config import YOPASS, YOPASS_URL
 
-def create_yopass_link(username: str, password: str):
+def create_yopass_link(username: str, password: str) -> str:
     secret_data = f"{username}\n{password}"
 
     link = subprocess.run(

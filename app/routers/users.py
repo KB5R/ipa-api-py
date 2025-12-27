@@ -6,7 +6,7 @@ from app.utils.validation import is_valid_email
 from app.utils.excel import parse_excel_row, parse_fio, parse_groups
 from app.services.yopass import create_yopass_link
 from app.models.user import UserCreate
-from typing import Optional
+from typing import Optional, Dict, Any
 import openpyxl
 from io import BytesIO
 
@@ -15,7 +15,7 @@ router = APIRouter()
 
 
 @router.get("/api/v1/users/{username}")
-def get_user(username: str, request: Request):
+def get_user(username: str, request: Request) -> Dict[str, Any]:
     """
     Получение информации о пользователе
     Аналог в FreeIPA: ipa user-show --all username
@@ -38,7 +38,7 @@ def get_user(username: str, request: Request):
         )
 
 @router.post("/api/v1/users/{username}/delete")
-def delete_user(username: str, request: Request):
+def delete_user(username: str, request: Request) -> Dict[str, str]:
     """
     Обычное удаление пользователя в FreeIPA
 
@@ -69,7 +69,7 @@ def delete_user(username: str, request: Request):
         )
 
 @router.post("/api/v1/users/{username}/disable")
-def disable_user(username: str, request: Request):
+def disable_user(username: str, request: Request) -> Dict[str, str]:
     """
     Обычное выключение пользователя в FreeIPA
 
@@ -92,7 +92,7 @@ def disable_user(username: str, request: Request):
         )
 
 @router.post("/api/v1/users/{username}/enable")
-def enable_user(username: str, request: Request):
+def enable_user(username: str, request: Request) -> Dict[str, str]:
     """
     Активация юзера в FreeIPA
 
@@ -115,7 +115,7 @@ def enable_user(username: str, request: Request):
         )
 
 @router.post("/api/v1/users/{username}/reset-password")
-def reset_password(username: str, request: Request):
+def reset_password(username: str, request: Request) -> Dict[str, Any]:
     """
     Сброс пароля пользователя в FreeIPA
 
@@ -158,7 +158,7 @@ def reset_password(username: str, request: Request):
 
 
 @router.post("/api/v1/creat-users")
-def create_user(user: UserCreate, request: Request):
+def create_user(user: UserCreate, request: Request) -> Dict[str, Any]:
     """
     Создает пользователя c передачей цельного JSON файла
 
@@ -338,7 +338,7 @@ def create_user_form(
         raise HTTPException(status_code=500, detail=str(e))
     
 @router.get("/api/v1/users/search-by-email/{email}")
-def search_user_by_email(email: str, request: Request):
+def search_user_by_email(email: str, request: Request) -> Dict[str, Any]:
     """
     Поиск пользователя по email (для отладки)
 
@@ -613,7 +613,7 @@ async def validate_excel(request: Request, file: UploadFile = File(...)):
         )
 
 @router.post("/api/v1/users/bulk-create-from-excel")
-async def bulk_create_from_excel(request: Request, file: UploadFile = File(...)):
+async def bulk_create_from_excel(request: Request, file: UploadFile = File(...)) -> Dict[str, Any]:
     """
     Парсинг excel и создание пользователя
     """

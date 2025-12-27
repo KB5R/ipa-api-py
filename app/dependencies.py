@@ -9,7 +9,7 @@ user_sessions = {}
 ipa_clients = {}
 
 
-def cleanup_session(session_id: str):
+def cleanup_session(session_id: str) -> None:
     """Удаляет сессию и связанный FreeIPA клиент"""
     if session_id in user_sessions:
         del user_sessions[session_id]

@@ -1,11 +1,12 @@
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import StreamingResponse
 from app.dependencies import get_user_client
+from typing import List, Dict, Any
 
 router = APIRouter()
 
 @router.post("/api/v1/utils/text-to-json")
-async def text_to_json(users_text: str):
+def text_to_json(users_text: str) -> List[str]:
     """
     Отдаем:
     ivan@test.com
@@ -24,7 +25,7 @@ async def text_to_json(users_text: str):
     return identifiers
 
 @router.get("/api/v1/users/search-by-email/{email}")
-def search_user_by_email_debug(email: str, request: Request):
+def search_user_by_email_debug(email: str, request: Request) -> Dict[str, Any]:
     """
     Поиск пользователя по email (для отладки)
 
@@ -84,7 +85,7 @@ def search_user_by_email_debug(email: str, request: Request):
 
 
 @router.get("/api/v1/report/full-usersgroups-info")
-def fullusersgroupsinfo(request: Request):
+def fullusersgroupsinfo(request: Request) -> StreamingResponse:
     """
     Получение информации о всех пользователях и его группах
     """
@@ -125,7 +126,7 @@ def fullusersgroupsinfo(request: Request):
         )
 
 @router.get("/api/v1/report/full-info")
-def full_info(request: Request):
+def full_info(request: Request) -> Dict[str, Any]:
     """
     Получение информации о всех пользователях и его группах
     """

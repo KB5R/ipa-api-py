@@ -1,6 +1,7 @@
+from typing import Dict, Any, List, Tuple, Optional
 from .transliteration import transliterate
 
-def parse_excel_row(row):
+def parse_excel_row(row) -> Dict[str, Any]:
     """Парсит строку Excel"""
     return {
         "fio": str(row[0]).strip() if row[0] else "",
@@ -10,7 +11,7 @@ def parse_excel_row(row):
         "groups_str": str(row[4]).strip() if len(row) > 4 and row[4] else ""
     }
 
-def parse_fio(fio: str):
+def parse_fio(fio: str) -> Optional[Tuple[str, str, str]]:
     """Парсит ФИО и генерирует username. Возвращает (last_name, first_name, username) или None"""
     fio_parts = fio.split()
     if len(fio_parts) < 2:
@@ -24,7 +25,7 @@ def parse_fio(fio: str):
 
     return last_name, first_name, username
 
-def parse_groups(groups_str: str):
+def parse_groups(groups_str: str) -> List[str]:
     """Парсит строку групп через запятую"""
     if not groups_str:
         return []

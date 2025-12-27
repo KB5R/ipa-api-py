@@ -9,7 +9,10 @@ import uuid
 router = APIRouter()
 
 @router.post("/api/v1/session/login")
-async def login(request: Request, username: str = Form(...), password: str = Form(...)):
+def login(request: Request,
+                username: str = Form(...),
+                password: str = Form(...)
+                ) -> JSONResponse:
     """Аутентификация пользователя в FreeIPA"""
     try:
         logger.info(f"Login attempt: {username}")
@@ -57,7 +60,7 @@ async def login(request: Request, username: str = Form(...), password: str = For
 
 
 @router.post("/api/v1/session/logout")
-async def logout(request: Request):
+def logout(request: Request) -> JSONResponse:
     """Выход из системы"""
     session_id = request.cookies.get("ipa_session")
 

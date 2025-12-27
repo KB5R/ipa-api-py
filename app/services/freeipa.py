@@ -4,7 +4,7 @@ from app.config import IPA_HOST
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-def create_freeipa_client(host: str = None):
+def create_freeipa_client(host: str = None) -> Client:
     """Создаёт клиент FreeIPA без авторизации"""
     host = host or IPA_HOST
     if not host:
@@ -13,7 +13,7 @@ def create_freeipa_client(host: str = None):
     return Client(host=host, verify_ssl=False)
 
 
-def resolve_username(client, identifier: str) -> str:
+def resolve_username(client: Client, identifier: str) -> str:
     """
     Преобразует identifier (username или email) в username.
     
