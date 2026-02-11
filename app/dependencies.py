@@ -30,24 +30,35 @@ def authenticate_user(username: str, password: str) -> Client:
         )
 
 
+def get_session_username(request: Request) -> str:
+    """Получает username текущего пользователя из сессии"""
+    session_id = request.cookies.get("ipa_session")
+
+    if not session_id:
+        return "unknown"
+
+    session_data = user_sessions.get(session_id, {})
+    return session_data.get("username", "unknown")
+
+
 def get_user_client(request: Request) -> Client:
     """Получает клиент FreeIPA для текущего пользователя из сессии"""
     session_id = request.cookies.get("ipa_session")
-    
+
     if not session_id:
         raise HTTPException(status_code=401, detail="Не авторизован")
-    
+
     if session_id not in user_sessions:
         raise HTTPException(status_code=401, detail="Сессия истекла")
-    
+
     session_data = user_sessions[session_id]
 
     # Проверяем срок действия сессии
     if datetime.now() > session_data["expires"]:
         cleanup_session(session_id)
         raise HTTPException(status_code=401, detail="Сессия истекла")
-    
+
     if session_id not in ipa_clients:
         raise HTTPException(status_code=401, detail="Ошибка сессии")
-    
+
     return ipa_clients[session_id]

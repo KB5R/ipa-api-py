@@ -1,4 +1,4 @@
-from app.dependencies import user_sessions, get_user_client
+from app.dependencies import get_user_client
 from app.services.freeipa import resolve_username
 from fastapi import APIRouter, Request
 from typing import Dict, List, Any
@@ -51,7 +51,7 @@ def bulk_delete_users(identifiers: List[str], request: Request) -> Dict[str, Lis
 @router.post("/api/v1/users/bulk-disable")
 def bulk_disable_users(identifiers: List[str], request: Request) -> Dict[str, List[Dict[str, Any]]]:
     """
-    Массовое удаление пользователей
+    Массовое отключение пользователей
     
     Принимает username или email
 

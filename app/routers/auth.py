@@ -2,7 +2,7 @@ from fastapi import APIRouter, Request, Form, HTTPException
 from fastapi.responses import JSONResponse
 from datetime import datetime, timedelta
 from app.config import logger, SESSION_EXPIRATION_MINUTES
-from app.dependencies import authenticate_user, user_sessions, ipa_clients, cleanup_session, get_user_client
+from app.dependencies import authenticate_user, user_sessions, ipa_clients, cleanup_session
 import uuid
 
 
@@ -22,17 +22,17 @@ def login(request: Request,
         # Создаём сессию
         session_id = str(uuid.uuid4())
         expires = datetime.now() + timedelta(minutes=SESSION_EXPIRATION_MINUTES)
-        
+
         # Сохраняем данные сессии
         user_sessions[session_id] = {
             "username": username,
             "created": datetime.now(),
             "expires": expires
         }
-        
+
         # Сохраняем клиент FreeIPA
         ipa_clients[session_id] = client
-        
+
         # Создаём ответ с кукой
         response = JSONResponse(
             content={
@@ -41,13 +41,14 @@ def login(request: Request,
                 "session_id": session_id
             }
         )
-        
+
         response.set_cookie(
             key="ipa_session",
             value=session_id,
-            httponly=True,
+            httponly=False,  # Разрешаем доступ из JavaScript
             max_age=SESSION_EXPIRATION_MINUTES * 60,
-            path="/"
+            path="/",
+            samesite="lax"  # Работает для same-site запросов
         )
 
         logger.info(f"Login successful: {username}")

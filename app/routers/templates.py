@@ -3,8 +3,8 @@ from fastapi.responses import FileResponse
 
 router = APIRouter()
 
-@router. get("/api/v1/tempalates/templates-excel")
-def output_exel_templats() -> FileResponse:
+@router.get("/api/v1/templates/templates-excel")
+def output_excel_templates() -> FileResponse:
     """
     Скачать шаблон excel для массового создания пользователя
     """

@@ -174,7 +174,10 @@ def create_user(user: UserCreate, request: Request) -> Dict[str, Any]:
     ВАЖНО: Если указаны группы и ни одна не добавилась - пользователь будет удален и вернется ошибка.
     """
     try:
-        username = f"{user.first_name.lower()}.{user.last_name.lower()}"
+        # Транслитерация для поддержки кириллицы
+        first_name_en = transliterate(user.first_name).lower()
+        last_name_en = transliterate(user.last_name).lower()
+        username = f"{first_name_en}.{last_name_en}"
         full_name = f"{user.first_name} {user.last_name}"
 
         session_id = request.cookies.get("ipa_session")
@@ -228,8 +231,8 @@ def create_user(user: UserCreate, request: Request) -> Dict[str, Any]:
             if len(added_groups) == 0:
                 try:
                     client._request("user_del", args=[username], params={})
-                except:
-                    pass  # Игнорирую ошибки удаления
+                except Exception as e:
+                    logger.warning(f"Failed to delete user {username} during rollback: {e}")
 
                 raise HTTPException(
                     status_code=500,
@@ -268,7 +271,10 @@ def create_user_form(
     ВАЖНО: Если указаны группы и ни одна не добавилась - пользователь будет удален и вернется ошибка.
     """
     try:
-        username = f"{first_name.lower()}.{last_name.lower()}" # Считаю это идеальной УЗ, правки будут внесены если надо maybe
+        # Транслитерация для поддержки кириллицы
+        first_name_en = transliterate(first_name).lower()
+        last_name_en = transliterate(last_name).lower()
+        username = f"{first_name_en}.{last_name_en}"
         full_name = f"{first_name} {last_name}"
 
         client = get_user_client(request)
@@ -319,8 +325,8 @@ def create_user_form(
             if len(added_groups) == 0:
                 try:
                     client._request("user_del", args=[username], params={})
-                except:
-                    pass
+                except Exception as e:
+                    logger.warning(f"Failed to delete user {username} during rollback: {e}")
                 raise HTTPException(
                     status_code=500,
                     detail=f"Пользователь создан, но не удалось добавить ни в одну группу. Пользователь удален. Ошибки: {failed_groups}"
@@ -546,7 +552,7 @@ async def validate_excel(request: Request, file: UploadFile = File(...)):
                             try:
                                 client._request("group_show", args=[group])
                                 groups_cache[group] = True
-                            except:
+                            except Exception:
                                 groups_cache[group] = False
 
                         if not groups_cache[group]:
@@ -684,7 +690,7 @@ async def bulk_create_from_excel(request: Request, file: UploadFile = File(...))
                     client._request("user_show", args=[username])
                     # Если не упало - значит пользователь существует
                     row_errors.append(f"Username '{username}' уже существует в FreeIPA")
-                except:
+                except Exception:
                     # Пользователь не найден - можно создавать
                     pass
 
@@ -696,7 +702,7 @@ async def bulk_create_from_excel(request: Request, file: UploadFile = File(...))
                         # Найден пользователь с таким email
                         existing_username = email_check['result'][0]['uid'][0]
                         row_errors.append(f"Email '{email}' уже используется пользователем {existing_username}")
-                except:
+                except Exception:
                     # Ошибка поиска - игнорируем и продолжаем
                     pass
 
@@ -709,7 +715,7 @@ async def bulk_create_from_excel(request: Request, file: UploadFile = File(...))
                     for group in groups_list:
                         try:
                             client._request("group_show", args=[group])
-                        except:
+                        except Exception:
                             non_existing_groups.append(group)
 
                     if non_existing_groups:
