@@ -27,8 +27,12 @@ def resolve_username(client: Client, identifier: str) -> str:
     Raises:
         ValueError: если пользователь не найден
     """
-    # Если это не email - возвращаем как есть
+    # Если это не email - проверяем что пользователь существует
     if "@" not in identifier:
+        try:
+            client._request("user_show", args=[identifier], params={})
+        except Exception:
+            raise ValueError(f"Пользователь '{identifier}' не найден")
         return identifier
     
     # Ищем по email

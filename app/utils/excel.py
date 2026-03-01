@@ -1,5 +1,7 @@
 from typing import Dict, Any, List, Tuple, Optional
 from .transliteration import transliterate
+import openpyxl
+from io import BytesIO
 
 def parse_excel_row(row) -> Dict[str, Any]:
     """Парсит строку Excel"""
@@ -30,3 +32,15 @@ def parse_groups(groups_str: str) -> List[str]:
     if not groups_str:
         return []
     return [g.strip() for g in groups_str.split(',') if g.strip()]
+
+def parse_identifiers_column(file_bytes: bytes) -> List[str]:
+    """Читает колонку A из Excel (с min_row=2), возвращает список непустых строк (username или email)"""
+    workbook = openpyxl.load_workbook(BytesIO(file_bytes))
+    sheet = workbook.active
+    identifiers = []
+    for row in sheet.iter_rows(min_row=2, values_only=True):
+        if row and row[0]:
+            value = str(row[0]).strip()
+            if value:
+                identifiers.append(value)
+    return identifiers

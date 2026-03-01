@@ -32,10 +32,10 @@ def login(username: str, password: str) -> bool:
             st.session_state.username = username
             return True
         else:
-            st.error(f"❌ Ошибка входа: {response.json().get('detail', 'Неизвестная ошибка')}")
+            st.error(f"Ошибка входа: {response.json().get('detail', 'Неизвестная ошибка')}")
             return False
     except Exception as e:
-        st.error(f"❌ Ошибка подключения: {e}")
+        st.error(f"Ошибка подключения: {e}")
         return False
 
 
@@ -69,10 +69,10 @@ def reset_password(identifier: str) -> Optional[dict]:
         if response.ok:
             return response.json()
         else:
-            st.error(f"❌ Ошибка: {response.json().get('detail', 'Неизвестная ошибка')}")
+            st.error(f"Ошибка: {response.json().get('detail', 'Неизвестная ошибка')}")
             return None
     except Exception as e:
-        st.error(f"❌ Ошибка: {e}")
+        st.error(f"Ошибка: {e}")
         return None
 
 
@@ -96,10 +96,10 @@ def create_user(first_name: str, last_name: str, email: str,
         if response.ok:
             return response.json()
         else:
-            st.error(f"❌ Ошибка: {response.json().get('detail', 'Неизвестная ошибка')}")
+            st.error(f"Ошибка: {response.json().get('detail', 'Неизвестная ошибка')}")
             return None
     except Exception as e:
-        st.error(f"❌ Ошибка: {e}")
+        st.error(f"Ошибка: {e}")
         return None
 
 
@@ -115,22 +115,22 @@ def bulk_create_from_excel(file) -> Optional[dict]:
         if response.ok:
             return response.json()
         else:
-            st.error(f"❌ Ошибка: {response.json().get('detail', 'Неизвестная ошибка')}")
+            st.error(f"Ошибка: {response.json().get('detail', 'Неизвестная ошибка')}")
             return None
     except Exception as e:
-        st.error(f"❌ Ошибка: {e}")
+        st.error(f"Ошибка: {e}")
         return None
 
 
 # Настройка страницы
 st.set_page_config(
     page_title="FreeIPA Portal",
-    page_icon="🔐",
+    page_icon="",
     layout="wide"
 )
 
 # Заголовок
-st.title("🔐 FreeIPA Portal")
+st.title("FreeIPA Portal")
 
 # === ФОРМА ВХОДА ===
 if not st.session_state.logged_in:
@@ -149,7 +149,7 @@ if not st.session_state.logged_in:
 
             if submitted:
                 if login(username, password):
-                    st.success("✅ Вы успешно вошли!")
+                    st.success("Вы авторизованы")
                     st.rerun()
 
 # === ГЛАВНАЯ СТРАНИЦА (после входа) ===
@@ -170,7 +170,7 @@ else:
 
     # === ВКЛАДКА 1: СБРОС ПАРОЛЯ ===
     with tab1:
-        st.header("🔑 Сброс пароля")
+        st.header("Сброс пароля")
         st.markdown("Введите username или email пользователя")
 
         with st.form("reset_password_form"):
@@ -182,9 +182,9 @@ else:
                 result = reset_password(identifier)
 
                 if result:
-                    st.success(f"✅ Пароль успешно сброшен для пользователя **{result['username']}**")
+                    st.success(f"Пароль успешно сброшен для пользователя **{result['username']}**")
 
-                    st.markdown("### 📋 Yopass ссылка:")
+                    st.markdown("### Yopass ссылка:")
                     st.text_input(
                         "Скопируйте ссылку ниже (выделите и Ctrl+C):",
                         value=result['yopass_link'],
@@ -192,24 +192,24 @@ else:
                         label_visibility="collapsed"
                     )
 
-                    st.info("💡 Выделите ссылку выше и скопируйте её (Ctrl+C). Отправьте пользователю (действует 7 дней, одноразовая)")
+                    st.info("Выделите ссылку выше и скопируйте её (Ctrl+C). Отправьте пользователю (действует 7 дней, одноразовая)")
 
     # === ВКЛАДКА 2: МАССОВЫЙ СБРОС ПАРОЛЕЙ ===
     with tab2:
-        st.header("🔄 Массовый сброс паролей")
+        st.header(" Массовый сброс паролей")
         st.markdown("Загрузите Excel файл со списком пользователей для сброса паролей")
 
         # Галочка для отправки на SMTP
         send_to_smtp = st.checkbox(
-            "📧 Отправить пароли на email (SMTP)",
+            "Отправить пароли на email (SMTP)",
             value=False,
             help="Если включено, пароли будут отправлены пользователям на email автоматически"
         )
 
         if send_to_smtp:
-            st.info("📧 Пароли будут отправлены на email пользователей через SMTP")
+            st.info("Пароли будут отправлены на email пользователей через SMTP")
         else:
-            st.info("📋 Yopass ссылки будут показаны здесь для ручной отправки")
+            st.info("Yopass ссылки будут показаны здесь для ручной отправки")
 
         # Загрузка файла
         uploaded_file = st.file_uploader(
@@ -232,21 +232,21 @@ else:
                 with st.spinner("Сбрасываем пароли..."):
                     # TODO: Реализовать вызов API
                     # Пока заглушка
-                    st.warning("⚠️ Функция в разработке")
+                    st.warning(" Функция в разработке")
 
                     # Заглушка результата
-                    st.success("✅ Обработано: 3 пользователя")
+                    st.success("Обработано: 3 пользователя")
 
                     if send_to_smtp:
-                        st.success("📧 Email отправлены: 2")
-                        st.error("❌ Email не отправлены: 1")
+                        st.success("Email отправлены: 2")
+                        st.error("Email не отправлены: 1")
 
-                    with st.expander("📋 Результаты (кликните для раскрытия)"):
+                    with st.expander("Результаты (кликните для раскрытия)"):
                         st.markdown("**ivan.ivanov**")
                         if send_to_smtp:
-                            st.success("✅ Пароль сброшен, email отправлен на ivan@company.com")
+                            st.success("Пароль сброшен, email отправлен на ivan@company.com")
                         else:
-                            st.success("✅ Пароль сброшен")
+                            st.success("Пароль сброшен")
                             st.text_input(
                                 "Yopass ссылка:",
                                 value="https://pass.soc.rt.ru/s/example123",
@@ -258,9 +258,9 @@ else:
 
                         st.markdown("**petr@company.com**")
                         if send_to_smtp:
-                            st.success("✅ Пароль сброшен, email отправлен")
+                            st.success("Пароль сброшен, email отправлен")
                         else:
-                            st.success("✅ Пароль сброшен")
+                            st.success("Пароль сброшен")
                             st.text_input(
                                 "Yopass ссылка:",
                                 value="https://pass.soc.rt.ru/s/example456",
@@ -275,7 +275,7 @@ else:
 
     # === ВКЛАДКА 3: СОЗДАТЬ ПОЛЬЗОВАТЕЛЯ ===
     with tab3:
-        st.header("👤 Создание пользователя")
+        st.header("Создание пользователя")
 
         with st.form("create_user_form"):
             col1, col2 = st.columns(2)
@@ -294,15 +294,15 @@ else:
 
             if submitted:
                 if not first_name or not last_name or not email:
-                    st.error("❌ Заполните обязательные поля: Имя, Фамилия, Email")
+                    st.error("Заполните обязательные поля: Имя, Фамилия, Email")
                 else:
                     result = create_user(first_name, last_name, email, phone, title, groups)
 
                     if result:
-                        st.success(f"✅ Пользователь **{result['username']}** успешно создан!")
+                        st.success(f"Пользователь **{result['username']}** успешно создан!")
 
                         if result.get('yopass_link'):
-                            st.markdown("### 📋 Yopass ссылка:")
+                            st.markdown("### Yopass ссылка:")
                             st.text_input(
                                 "Скопируйте ссылку ниже (выделите и Ctrl+C):",
                                 value=result['yopass_link'],
@@ -313,16 +313,16 @@ else:
 
                         if result.get('groups'):
                             if result['groups'].get('added'):
-                                st.success(f"✅ Добавлен в группы: {', '.join(result['groups']['added'])}")
+                                st.success(f"Добавлен в группы: {', '.join(result['groups']['added'])}")
                             if result['groups'].get('failed'):
-                                st.warning(f"⚠️ Не удалось добавить в группы: {result['groups']['failed']}")
+                                st.warning(f"Не удалось добавить в группы: {result['groups']['failed']}")
 
     # === ВКЛАДКА 4: МАССОВОЕ СОЗДАНИЕ ===
     with tab4:
-        st.header("📊 Массовое создание из Excel")
+        st.header("Массовое создание из Excel")
 
         st.markdown("### Шаг 1: Скачайте шаблон Excel")
-        st.markdown(f"[📥 Скачать шаблон]({API_URL}/api/v1/templates/templates-excel)")
+        st.markdown(f"[Скачать шаблон]({API_URL}/api/v1/templates/templates-excel)")
 
         st.markdown("### Шаг 2: Загрузите заполненный файл")
 
@@ -332,15 +332,15 @@ else:
             col1, col2 = st.columns([1, 1])
 
             with col1:
-                if st.button("🚀 Создать пользователей", use_container_width=True):
+                if st.button("Создать пользователей", use_container_width=True):
                     with st.spinner("Создаём пользователей..."):
                         result = bulk_create_from_excel(uploaded_file)
 
                     if result:
-                        st.success(f"✅ Создано: **{len(result['success'])}**")
+                        st.success(f"Создано: **{len(result['success'])}**")
 
                         if result['failed']:
-                            st.error(f"❌ Ошибок: **{len(result['failed'])}**")
+                            st.error(f"Ошибок: **{len(result['failed'])}**")
 
                         # Показываем созданных пользователей
                         if result['success']:
@@ -358,7 +358,7 @@ else:
 
                         # Показываем ошибки
                         if result['failed']:
-                            with st.expander("❌ Ошибки (кликните для раскрытия)"):
+                            with st.expander("Ошибки (кликните для раскрытия)"):
                                 for fail in result['failed']:
                                     st.error(f"Строка {fail['row']}: {fail['error']}")
 
@@ -380,26 +380,26 @@ else:
                     if response.ok:
                         # Сохраняем CSV в session_state
                         st.session_state.csv_data = response.content
-                        st.success("✅ Отчёт готов к скачиванию!")
+                        st.success("Отчёт готов к скачиванию!")
                     else:
-                        st.error(f"❌ Ошибка: {response.status_code}")
+                        st.error(f"Ошибка: {response.status_code}")
                         
                 except Exception as e:
-                    st.error(f"❌ Ошибка: {e}")
+                    st.error(f"Ошибка: {e}")
         
         # Показываем кнопку скачивания если данные есть
         if 'csv_data' in st.session_state:
             st.download_button(
-                label="💾 Скачать CSV файл",
+                label="Скачать CSV файл",
                 data=st.session_state.csv_data,
                 file_name="users_groups_report.csv",
                 mime="text/csv",
                 width="stretch"
             )
-            st.caption("📊 Файл содержит: username, email, список групп")
+            st.caption("Файл содержит: username, email, список групп")
         
         st.markdown("---")
         
-        st.info("💡 Дополнительная аналитика и статистика будут добавлены позже")
+        st.info("Дополнительная аналитика и статистика будут добавлены позже")
 st.markdown("---")
 st.markdown("*FreeIPA Portal - Управление пользователями*")

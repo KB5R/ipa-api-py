@@ -5,6 +5,7 @@ from app.utils.transliteration import transliterate
 from app.utils.validation import is_valid_email
 from app.utils.excel import parse_excel_row, parse_fio, parse_groups
 from app.services.yopass import create_yopass_link
+from app.services.freeipa import resolve_username
 from app.models.user import UserCreate
 from typing import Optional, Dict, Any
 import openpyxl
@@ -12,6 +13,78 @@ from io import BytesIO
 
 
 router = APIRouter()
+
+
+@router.get("/api/v1/groups")
+def get_groups(request: Request) -> Dict[str, Any]:
+    """
+    Получение списка всех групп FreeIPA
+
+    Используется для отображения доступных групп при создании пользователя
+    """
+    try:
+        client = get_user_client(request)
+        result = client._request("group_find", args=[], params={"all": False})
+        groups = sorted([g['cn'][0] for g in result.get('result', [])])
+        return {"groups": groups, "count": len(groups)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка получения групп: {str(e)}")
+
+
+@router.get("/api/v1/users/search")
+def search_users(q: str, request: Request) -> Dict[str, Any]:
+    """
+    Поиск пользователей по частичному совпадению username, имени или фамилии
+
+    Возвращает чистый список с нужными полями для отображения
+    """
+    try:
+        client = get_user_client(request)
+
+        # Поиск по uid/имени/фамилии
+        by_name = client._request("user_find", args=[q], params={"all": False})
+        raw = {u['uid'][0]: u for u in by_name.get('result', [])}
+
+        # Дополнительный поиск по email (FreeIPA не включает mail в стандартный criteria)
+        try:
+            by_mail = client._request("user_find", args=[], params={"mail": q, "all": False})
+            for u in by_mail.get('result', []):
+                uid = u['uid'][0]
+                if uid not in raw:
+                    raw[uid] = u
+        except Exception:
+            pass
+
+        def parse_user(u: dict) -> dict:
+            disabled = u.get('nsaccountlock', False)
+            if isinstance(disabled, list):
+                disabled = disabled[0] if disabled else False
+            mail = u.get('mail', [])
+            phone_list = u.get('telephonenumber', [])
+            title_list = u.get('title', [])
+            givenname = u.get('givenname', [])
+            sn = u.get('sn', [])
+            first = givenname[0] if givenname else ""
+            last = sn[0] if sn else ""
+            return {
+                "username": u['uid'][0],
+                "full_name": f"{first} {last}".strip(),
+                "email": mail[0] if mail else "",
+                "phone": phone_list[0] if phone_list else "",
+                "title": title_list[0] if title_list else "",
+                "status": "disabled" if disabled else "active",
+                "groups": u.get('memberof_group', [])
+            }
+
+        users = [parse_user(u) for u in raw.values()]
+        return {"users": users, "count": len(users)}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка поиска: {str(e)}")
 
 
 @router.get("/api/v1/users/{username}")
@@ -27,6 +100,27 @@ def get_user(username: str, request: Request) -> Dict[str, Any]:
         
         # Получаем информацию о пользователе
         user = client._request("user_show", args=[username], params={"all": True})
+        return user
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ошибка получения пользователя: {str(e)}"
+        )
+
+@router.get("/api/v1/users/{username}/find")
+def get_user(username: str, request: Request) -> Dict[str, Any]:
+    """
+    Поиск пользователей аналог ipa user-find
+    """
+    try:
+        # Получаем клиент из сессии
+        client = get_user_client(request)
+        
+        # Получаем информацию о пользователе
+        user = client._request("user_find", args=[username], params={"all": True})
         return user
         
     except HTTPException:
@@ -131,11 +225,12 @@ def reset_password(username: str, request: Request) -> Dict[str, Any]:
         logger.warning(f"PASSWORD_RESET: {username} by {admin}")
 
         client = get_user_client(request)
+        username = resolve_username(client, username)
         result = client._request("user_mod", args=[username], params={"random": True})
 
         password = result['result']['randompassword']
 
-        yopass_link = create_yopass_link(username,password)
+        yopass_link = create_yopass_link(username, password)
 
         response = {
             "username": username,
@@ -157,7 +252,7 @@ def reset_password(username: str, request: Request) -> Dict[str, Any]:
 
 
 
-@router.post("/api/v1/creat-users")
+@router.post("/api/v1/create-users")
 def create_user(user: UserCreate, request: Request) -> Dict[str, Any]:
     """
     Создает пользователя c передачей цельного JSON файла

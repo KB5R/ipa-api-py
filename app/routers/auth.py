@@ -19,6 +19,16 @@ def login(request: Request,
         # Аутентифицируем пользователя в FreeIPA
         client = authenticate_user(username, password)
 
+        # Проверяем группу пользователя
+        user_info = client._request("user_show", args=[username], params={})
+        groups = user_info['result'].get('memberof_group', [])
+        allowed_groups = ['admins', 'helpdesk'] # Настроить в соответствии
+        if not any(g in groups for g in allowed_groups):
+            raise HTTPException(
+                status_code=403,
+                detail="Доступ запрещён: требуется группа helpdesk или admins"
+            )
+
         # Создаём сессию
         session_id = str(uuid.uuid4())
         expires = datetime.now() + timedelta(minutes=SESSION_EXPIRATION_MINUTES)
@@ -54,6 +64,8 @@ def login(request: Request,
         logger.info(f"Login successful: {username}")
         return response
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.warning(f"Login failed: {username} - {str(e)}")
         raise HTTPException(status_code=401, detail=f"Ошибка авторизации: {str(e)}")

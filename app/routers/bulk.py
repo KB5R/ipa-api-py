@@ -1,6 +1,8 @@
 from app.dependencies import get_user_client
 from app.services.freeipa import resolve_username
-from fastapi import APIRouter, Request
+from app.services.yopass import create_yopass_link
+from app.utils.excel import parse_identifiers_column
+from fastapi import APIRouter, Request, UploadFile, File
 from typing import Dict, List, Any
 
 
@@ -171,6 +173,170 @@ def bulk_reset_password(identifiers: List[str], request: Request) -> Dict[str, L
             results["failed"].append({
                 "identifier": identifier,
                 "error": str(e)
+            })
+
+    return results
+
+
+@router.post("/api/v1/users/bulk-reset-password-with-yopass")
+def bulk_reset_password_with_yopass(identifiers: List[str], request: Request) -> Dict[str, List[Dict[str, Any]]]:
+    """
+    Массовый сброс паролей из JSON списка с Yopass ссылками
+
+    Принимает username или email:
+    ["ivan.ivanov", "petr@test.com"]
+    """
+    results = {"success": [], "failed": []}
+    client = get_user_client(request)
+
+    for identifier in identifiers:
+        try:
+            username = resolve_username(client, identifier)
+            reset_result = client._request("user_mod", args=[username], params={"random": True})
+            password = reset_result['result']['randompassword']
+            yopass_link = create_yopass_link(username, password)
+            email_list = reset_result['result'].get('mail', [])
+            email = email_list[0] if email_list else ""
+            results["success"].append({
+                "identifier": identifier,
+                "username": username,
+                "email": email,
+                "yopass_link": yopass_link
+            })
+        except Exception as e:
+            results["failed"].append({"identifier": identifier, "error": str(e)})
+
+    return results
+
+
+@router.post("/api/v1/users/bulk-disable-preview-list")
+def bulk_disable_preview_list(identifiers: List[str], request: Request) -> Dict[str, Any]:
+    """
+    Dry-run: резолвит пользователей из JSON списка, ничего не делает в FreeIPA
+
+    Принимает username или email:
+    ["ivan.ivanov", "petr@test.com"]
+    """
+    found = []
+    not_found = []
+    client = get_user_client(request)
+
+    for identifier in identifiers:
+        try:
+            username = resolve_username(client, identifier)
+            found.append({"identifier": identifier, "username": username})
+        except ValueError as e:
+            not_found.append({"identifier": identifier, "error": str(e)})
+        except Exception as e:
+            not_found.append({"identifier": identifier, "error": str(e)})
+
+    return {
+        "found": found,
+        "not_found": not_found,
+        "total": len(identifiers),
+        "found_count": len(found),
+        "not_found_count": len(not_found)
+    }
+
+
+@router.post("/api/v1/users/bulk-reset-password-from-excel")
+async def bulk_reset_password_from_excel(request: Request, file: UploadFile = File(...)) -> Dict[str, List[Dict[str, Any]]]:
+    """
+    Массовый сброс паролей из Excel файла
+
+    Колонка A: username или email (строка 1 — заголовок, пропускается)
+
+    Возвращает Yopass ссылки для каждого пользователя
+    """
+    results = {"success": [], "failed": []}
+    client = get_user_client(request)
+
+    contents = await file.read()
+    identifiers = parse_identifiers_column(contents)
+
+    for identifier in identifiers:
+        try:
+            username = resolve_username(client, identifier)
+
+            reset_result = client._request("user_mod", args=[username], params={"random": True})
+            password = reset_result['result']['randompassword']
+
+            yopass_link = create_yopass_link(username, password)
+            email_list = reset_result['result'].get('mail', [])
+            email = email_list[0] if email_list else ""
+
+            results["success"].append({
+                "identifier": identifier,
+                "username": username,
+                "email": email,
+                "yopass_link": yopass_link
+            })
+
+        except Exception as e:
+            results["failed"].append({
+                "identifier": identifier,
+                "error": str(e)
+            })
+
+    return results
+
+
+@router.post("/api/v1/users/bulk-disable-preview")
+async def bulk_disable_preview(request: Request, file: UploadFile = File(...)) -> Dict[str, Any]:
+    """
+    Dry-run: резолвит пользователей из Excel, ничего не делает в FreeIPA
+
+    Колонка A: username или email (строка 1 — заголовок, пропускается)
+    """
+    found = []
+    not_found = []
+    client = get_user_client(request)
+
+    contents = await file.read()
+    identifiers = parse_identifiers_column(contents)
+
+    for identifier in identifiers:
+        try:
+            username = resolve_username(client, identifier)
+            found.append({"identifier": identifier, "username": username})
+        except ValueError as e:
+            not_found.append({"identifier": identifier, "error": str(e)})
+        except Exception as e:
+            not_found.append({"identifier": identifier, "error": str(e)})
+
+    return {
+        "found": found,
+        "not_found": not_found,
+        "total": len(identifiers),
+        "found_count": len(found),
+        "not_found_count": len(not_found)
+    }
+
+
+@router.post("/api/v1/users/bulk-disable-from-excel")
+async def bulk_disable_from_excel(request: Request, file: UploadFile = File(...)) -> Dict[str, List[Dict[str, Any]]]:
+    """
+    Массовая блокировка пользователей из Excel файла
+
+    Колонка A: username или email (строка 1 — заголовок, пропускается)
+    """
+    results = {"success": [], "failed": []}
+    client = get_user_client(request)
+
+    contents = await file.read()
+    identifiers = parse_identifiers_column(contents)
+
+    for identifier in identifiers:
+        try:
+            username = resolve_username(client, identifier)
+            client._request("user_disable", args=[username], params={})
+            results["success"].append({"identifier": identifier, "username": username})
+        except ValueError as e:
+            results["failed"].append({"identifier": identifier, "error": str(e)})
+        except Exception as e:
+            results["failed"].append({
+                "identifier": identifier,
+                "error": f"Ошибка блокировки: {str(e)}"
             })
 
     return results
