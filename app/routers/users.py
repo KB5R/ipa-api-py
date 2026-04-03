@@ -5,7 +5,7 @@ from app.utils.transliteration import transliterate
 from app.utils.validation import is_valid_email
 from app.utils.excel import parse_excel_row, parse_fio, parse_groups
 from app.services.yopass import create_yopass_link
-from app.services.freeipa import resolve_username
+from app.services.freeipa import resolve_username, get_ipa_domain
 from app.models.user import UserCreate
 from typing import Optional, Dict, Any
 import openpyxl
@@ -230,7 +230,9 @@ def reset_password(username: str, request: Request) -> Dict[str, Any]:
 
         password = result['result']['randompassword']
 
-        yopass_link = create_yopass_link(username, password)
+        domain = get_ipa_domain(client)
+        login = f"{username}@{domain}" if domain else username
+        yopass_link = create_yopass_link(login, password)
 
         response = {
             "username": username,

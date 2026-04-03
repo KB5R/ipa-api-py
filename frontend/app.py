@@ -26,6 +26,7 @@ for key, default in [
     ("groups_list", None),
     ("search_results", None),
     ("search_action_result", None),
+    ("show_passwords_mode", False),
 ]:
     if key not in st.session_state:
         st.session_state[key] = default
@@ -75,6 +76,22 @@ def bulk_reset_with_yopass(identifiers: List[str]) -> Optional[dict]:
     try:
         response = requests.post(
             f"{API_URL}/api/v1/users/bulk-reset-password-with-yopass",
+            json=identifiers,
+            cookies=get_cookies()
+        )
+        if response.ok:
+            return response.json()
+        st.error(f"Ошибка: {response.json().get('detail', 'Неизвестная ошибка')}")
+        return None
+    except Exception as e:
+        st.error(f"Ошибка: {e}")
+        return None
+
+
+def bulk_reset_plain(identifiers: List[str]) -> Optional[dict]:
+    try:
+        response = requests.post(
+            f"{API_URL}/api/v1/users/bulk-reset-password",
             json=identifiers,
             cookies=get_cookies()
         )
@@ -277,7 +294,7 @@ def build_reset_excel(result: dict) -> bytes:
     ws = wb.active
     ws.title = "Сброс паролей"
 
-    headers = ["Username", "Email", "Yopass ссылка", "Статус"]
+    headers = ["Username", "Email", "Yopass ссылка", "Пароль", "Статус"]
     for col, header in enumerate(headers, 1):
         cell = ws.cell(row=1, column=col, value=header)
         cell.font = Font(bold=True, color="FFFFFF")
@@ -286,23 +303,27 @@ def build_reset_excel(result: dict) -> bytes:
 
     row = 2
     for user in result["success"]:
+        yopass_link = user.get("yopass_link", "")
         ws.cell(row=row, column=1, value=user["username"])
         ws.cell(row=row, column=2, value=user.get("email", ""))
-        ws.cell(row=row, column=3, value=user["yopass_link"])
-        ws.cell(row=row, column=4, value="Успешно")
+        ws.cell(row=row, column=3, value=yopass_link)
+        ws.cell(row=row, column=4, value=user.get("password", "") if not yopass_link else "")
+        ws.cell(row=row, column=5, value="Успешно")
         row += 1
 
     for user in result["failed"]:
         ws.cell(row=row, column=1, value=user["identifier"])
         ws.cell(row=row, column=2, value="")
         ws.cell(row=row, column=3, value="")
-        ws.cell(row=row, column=4, value=f"Ошибка: {user['error']}")
+        ws.cell(row=row, column=4, value="")
+        ws.cell(row=row, column=5, value=f"Ошибка: {user['error']}")
         row += 1
 
     ws.column_dimensions["A"].width = 22
     ws.column_dimensions["B"].width = 32
     ws.column_dimensions["C"].width = 85
-    ws.column_dimensions["D"].width = 20
+    ws.column_dimensions["D"].width = 22
+    ws.column_dimensions["E"].width = 20
 
     buf = BytesIO()
     wb.save(buf)
@@ -328,17 +349,27 @@ def show_reset_results(result: dict):
     st.markdown("---")
     for idx, user in enumerate(result["success"]):
         email_str = f" · {user['email']}" if user.get("email") else ""
+        is_blocked = user.get("status") == "disabled"
+        status_icon = "🔴" if is_blocked else "🟢"
+        yopass_link = user.get("yopass_link", "")
         c1, c2 = st.columns([1, 2])
         with c1:
-            st.success(f"✅ **{user['username']}**{email_str}")
+            st.success(f"✅ {status_icon} **{user['username']}**{email_str}")
+            if is_blocked:
+                st.warning("⚠️ Пользователь заблокирован — разблокируйте после сброса")
+            st.caption("🔑 Требует смены пароля при входе")
         with c2:
-            st.text_input(
-                "",
-                value=user["yopass_link"],
-                disabled=True,
-                label_visibility="collapsed",
-                key=f"yp_{idx}_{user['username']}"
-            )
+            if yopass_link:
+                st.text_input(
+                    "",
+                    value=yopass_link,
+                    disabled=True,
+                    label_visibility="collapsed",
+                    key=f"yp_{idx}_{user['username']}"
+                )
+            else:
+                st.code(user.get("password", ""))
+                st.caption("Сохраните пароль — он виден только сейчас")
     for fail in result["failed"]:
         st.error(f"❌ **{fail['identifier']}** — {fail['error']}")
 
@@ -392,10 +423,20 @@ def page_passwords():
         if preview["found_count"] > 0:
             st.markdown("---")
             st.warning(f"Пароли будут сброшены для **{preview['found_count']}** пользователей")
+            skip_yopass = st.checkbox(
+                "Показать пароли напрямую (без Yopass)",
+                value=st.session_state.show_passwords_mode,
+                key="pwd_skip_yopass",
+                help="Yopass не будет использован — пароль будет показан в открытом виде"
+            )
+            st.session_state.show_passwords_mode = skip_yopass
             if st.button("Сбросить пароли", use_container_width=True, key="pwd_reset_btn", type="primary"):
                 identifiers = [u["identifier"] for u in preview["found"]]
                 with st.spinner("Сбрасываем пароли..."):
-                    result = bulk_reset_with_yopass(identifiers)
+                    if skip_yopass:
+                        result = bulk_reset_plain(identifiers)
+                    else:
+                        result = bulk_reset_with_yopass(identifiers)
                 if result:
                     st.session_state.pwd_results = result
                     st.session_state.pwd_preview = None
@@ -483,13 +524,17 @@ def page_state_management():
         exec_mode = st.session_state.state_mode_used_exec or mode
         action_done = "Заблокировано" if exec_mode == "Заблокировать" else "Разблокировано"
         action_verb = "заблокирован" if exec_mode == "Заблокировать" else "разблокирован"
+        already_list = result.get("already", [])
         st.markdown("---")
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns(3)
         col1.metric(action_done, len(result["success"]))
-        col2.metric("Ошибок", len(result["failed"]))
+        col2.metric("Уже в нужном состоянии", len(already_list))
+        col3.metric("Ошибок", len(result["failed"]))
         st.markdown("---")
         for u in result["success"]:
             st.success(f"✅ **{u['username']}** — {action_verb}")
+        for u in already_list:
+            st.warning(f"⚠️ **{u['username']}** — {u['note']}")
         for u in result["failed"]:
             st.error(f"❌ **{u['identifier']}** — {u['error']}")
 
@@ -672,10 +717,23 @@ def page_search_users():
             with col_info:
                 name = user["full_name"] or user["username"]
                 st.markdown(f"**{name}** · `{user['username']}` · {user['email']}")
+                skip_yopass = st.checkbox(
+                    "Показать пароль напрямую (без Yopass)",
+                    value=st.session_state.show_passwords_mode,
+                    key="search_skip_yopass",
+                    help="Пароль будет показан в открытом виде, без создания Yopass ссылки"
+                )
+                st.session_state.show_passwords_mode = skip_yopass
             with col_r:
                 if st.button("🔑 Сбросить пароль", use_container_width=True, key="search_reset_btn"):
                     with st.spinner("Сбрасываем..."):
-                        res = reset_user_password(user["username"])
+                        if st.session_state.show_passwords_mode:
+                            bulk_res = bulk_reset_plain([user["username"]])
+                            res = bulk_res["success"][0] if bulk_res and bulk_res.get("success") else None
+                            if res:
+                                res = {"username": res["username"], "password": res["password"], "yopass_link": ""}
+                        else:
+                            res = reset_user_password(user["username"])
                     if res:
                         st.session_state.search_action_result = {"type": "reset", "data": res}
                         st.rerun()
@@ -703,14 +761,18 @@ def page_search_users():
             if action_res["type"] == "reset":
                 data = action_res["data"]
                 st.success(f"✅ Пароль сброшен для **{data['username']}**")
-                st.text_input(
-                    "",
-                    value=data["yopass_link"],
-                    disabled=True,
-                    label_visibility="collapsed",
-                    key="search_yopass"
-                )
-                st.caption("Ссылка одноразовая, действует 7 дней")
+                if data.get("yopass_link"):
+                    st.text_input(
+                        "",
+                        value=data["yopass_link"],
+                        disabled=True,
+                        label_visibility="collapsed",
+                        key="search_yopass"
+                    )
+                    st.caption("Ссылка одноразовая, действует 7 дней")
+                else:
+                    st.code(data.get("password", ""))
+                    st.caption("Сохраните пароль — он виден только сейчас")
             elif action_res["type"] == "blocked":
                 st.success(f"✅ **{action_res['username']}** заблокирован")
             elif action_res["type"] == "unblocked":

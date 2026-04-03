@@ -4,6 +4,22 @@ from app.config import IPA_HOST
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+_cached_domain: str | None = None
+
+
+def get_ipa_domain(client: Client) -> str:
+    """
+    Получает домен из FreeIPA через RPC-метод env.
+    Аналог команды: ipa env domain
+    Результат кешируется — запрос делается один раз за жизнь процесса.
+    """
+    global _cached_domain
+    if _cached_domain is None:
+        result = client._request("env", args=["domain"], params={})
+        _cached_domain = result.get("result", {}).get("domain", "")
+    return _cached_domain
+
+
 def create_freeipa_client(host: str = None) -> Client:
     """Создаёт клиент FreeIPA без авторизации"""
     host = host or IPA_HOST

@@ -1,5 +1,5 @@
 from app.dependencies import get_user_client
-from app.services.freeipa import resolve_username
+from app.services.freeipa import resolve_username, get_ipa_domain
 from app.services.yopass import create_yopass_link
 from app.utils.excel import parse_identifiers_column
 from fastapi import APIRouter, Request, UploadFile, File
@@ -54,40 +54,40 @@ def bulk_delete_users(identifiers: List[str], request: Request) -> Dict[str, Lis
 def bulk_disable_users(identifiers: List[str], request: Request) -> Dict[str, List[Dict[str, Any]]]:
     """
     Массовое отключение пользователей
-    
+
     Принимает username или email
 
     ["ivan.ivanov", "petr@test.com", "petya.petrov"]
     """
-    results = {"success": [], "failed": []}
+    results = {"success": [], "failed": [], "already": []}
     client = get_user_client(request)
 
     for identifier in identifiers:
+        username = None
         try:
-            # Находим username (по email или напрямую)
             username = resolve_username(client, identifier)
-            
-            # Удаляем пользователя
             client._request("user_disable", args=[username], params={})
-            
-            # Добавляем в успешные
             results["success"].append({
                 "identifier": identifier,
                 "username": username
             })
-            
         except ValueError as e:
-            # Пользователь не найден
             results["failed"].append({
                 "identifier": identifier,
                 "error": str(e)
             })
         except Exception as e:
-            # Любая другая ошибка (FreeIPA, сеть и т.д.)
-            results["failed"].append({
-                "identifier": identifier,
-                "error": f"Ошибка отключения: {str(e)}"
-            })
+            if "already disabled" in str(e).lower():
+                results["already"].append({
+                    "identifier": identifier,
+                    "username": username or identifier,
+                    "note": "Уже заблокирован"
+                })
+            else:
+                results["failed"].append({
+                    "identifier": identifier,
+                    "error": f"Ошибка отключения: {str(e)}"
+                })
 
     return results
 
@@ -96,40 +96,40 @@ def bulk_disable_users(identifiers: List[str], request: Request) -> Dict[str, Li
 def bulk_enable_users(identifiers: List[str], request: Request) -> Dict[str, List[Dict[str, Any]]]:
     """
     Массовое включение пользователей
-    
+
     Принимает username или email
 
     ["ivan.ivanov", "petr@test.com", "petya.petrov"]
     """
-    results = {"success": [], "failed": []}
+    results = {"success": [], "failed": [], "already": []}
     client = get_user_client(request)
 
     for identifier in identifiers:
+        username = None
         try:
-            # Находим username (по email или напрямую)
             username = resolve_username(client, identifier)
-            
-            # Удаляем пользователя
             client._request("user_enable", args=[username], params={})
-            
-            # Добавляем в успешные
             results["success"].append({
                 "identifier": identifier,
                 "username": username
             })
-            
         except ValueError as e:
-            # Пользователь не найден
             results["failed"].append({
                 "identifier": identifier,
                 "error": str(e)
             })
         except Exception as e:
-            # Любая другая ошибка (FreeIPA, сеть и т.д.)
-            results["failed"].append({
-                "identifier": identifier,
-                "error": f"Ошибка включения: {str(e)}"
-            })
+            if "already enabled" in str(e).lower():
+                results["already"].append({
+                    "identifier": identifier,
+                    "username": username or identifier,
+                    "note": "Уже разблокирован"
+                })
+            else:
+                results["failed"].append({
+                    "identifier": identifier,
+                    "error": f"Ошибка включения: {str(e)}"
+                })
 
     return results
 
@@ -162,11 +162,18 @@ def bulk_reset_password(identifiers: List[str], request: Request) -> Dict[str, L
             )
 
             password = reset_result['result']['randompassword']
+            email_list = reset_result['result'].get('mail', [])
+            email = email_list[0] if email_list else ""
+            lock_val = reset_result['result'].get('nsaccountlock', False)
+            if isinstance(lock_val, list):
+                lock_val = lock_val[0] if lock_val else False
 
             results["success"].append({
                 "identifier": identifier,
                 "username": username,
-                "password": password
+                "email": email,
+                "password": password,
+                "status": "disabled" if lock_val else "active"
             })
 
         except Exception as e:
@@ -188,20 +195,26 @@ def bulk_reset_password_with_yopass(identifiers: List[str], request: Request) ->
     """
     results = {"success": [], "failed": []}
     client = get_user_client(request)
-
+    domain = get_ipa_domain(client)
     for identifier in identifiers:
         try:
             username = resolve_username(client, identifier)
             reset_result = client._request("user_mod", args=[username], params={"random": True})
             password = reset_result['result']['randompassword']
-            yopass_link = create_yopass_link(username, password)
+            login = f"{username}@{domain}" if domain else username
+            yopass_link = create_yopass_link(login, password)
             email_list = reset_result['result'].get('mail', [])
             email = email_list[0] if email_list else ""
+            lock_val = reset_result['result'].get('nsaccountlock', False)
+            if isinstance(lock_val, list):
+                lock_val = lock_val[0] if lock_val else False
             results["success"].append({
                 "identifier": identifier,
                 "username": username,
                 "email": email,
-                "yopass_link": yopass_link
+                "password": password,
+                "yopass_link": yopass_link,
+                "status": "disabled" if lock_val else "active"
             })
         except Exception as e:
             results["failed"].append({"identifier": identifier, "error": str(e)})
@@ -250,6 +263,7 @@ async def bulk_reset_password_from_excel(request: Request, file: UploadFile = Fi
     """
     results = {"success": [], "failed": []}
     client = get_user_client(request)
+    domain = get_ipa_domain(client)
 
     contents = await file.read()
     identifiers = parse_identifiers_column(contents)
@@ -261,15 +275,21 @@ async def bulk_reset_password_from_excel(request: Request, file: UploadFile = Fi
             reset_result = client._request("user_mod", args=[username], params={"random": True})
             password = reset_result['result']['randompassword']
 
-            yopass_link = create_yopass_link(username, password)
+            login = f"{username}@{domain}" if domain else username
+            yopass_link = create_yopass_link(login, password)
             email_list = reset_result['result'].get('mail', [])
             email = email_list[0] if email_list else ""
+            lock_val = reset_result['result'].get('nsaccountlock', False)
+            if isinstance(lock_val, list):
+                lock_val = lock_val[0] if lock_val else False
 
             results["success"].append({
                 "identifier": identifier,
                 "username": username,
                 "email": email,
-                "yopass_link": yopass_link
+                "password": password,
+                "yopass_link": yopass_link,
+                "status": "disabled" if lock_val else "active"
             })
 
         except Exception as e:
