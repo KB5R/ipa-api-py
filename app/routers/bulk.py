@@ -1,4 +1,5 @@
 from app.dependencies import get_user_client
+from app.services.email import send_password_reset_email
 from app.services.freeipa import resolve_username, get_ipa_domain
 from app.services.yopass import create_yopass_link
 from app.utils.excel import parse_identifiers_column
@@ -135,7 +136,7 @@ def bulk_enable_users(identifiers: List[str], request: Request) -> Dict[str, Lis
 
 
 @router.post("/api/v1/users/bulk-reset-password")
-def bulk_reset_password(identifiers: List[str], request: Request) -> Dict[str, List[Dict[str, Any]]]:
+def bulk_reset_password(identifiers: List[str], request: Request, send_email: bool = False) -> Dict[str, List[Dict[str, Any]]]:
     """
     Массовый сброс паролей пользователей
 
@@ -148,6 +149,7 @@ def bulk_reset_password(identifiers: List[str], request: Request) -> Dict[str, L
     }
 
     client = get_user_client(request)
+    domain = get_ipa_domain(client)
 
     for identifier in identifiers:
         try:
@@ -164,16 +166,38 @@ def bulk_reset_password(identifiers: List[str], request: Request) -> Dict[str, L
             password = reset_result['result']['randompassword']
             email_list = reset_result['result'].get('mail', [])
             email = email_list[0] if email_list else ""
+            login = f"{username}@{domain}" if domain else username
+            yopass_link = create_yopass_link(login, password) if send_email else ""
+            expiration = reset_result['result'].get('krbpasswordexpiration', [None])[0]
             lock_val = reset_result['result'].get('nsaccountlock', False)
             if isinstance(lock_val, list):
                 lock_val = lock_val[0] if lock_val else False
+
+            email_sent = False
+            email_error = None
+            if send_email:
+                if not email:
+                    email_error = "У пользователя не указан email"
+                else:
+                    try:
+                        send_password_reset_email(
+                            recipient=email,
+                            username=login,
+                            yopass_link=yopass_link,
+                            expiration=expiration,
+                        )
+                        email_sent = True
+                    except Exception as e:
+                        email_error = str(e)
 
             results["success"].append({
                 "identifier": identifier,
                 "username": username,
                 "email": email,
                 "password": password,
-                "status": "disabled" if lock_val else "active"
+                "status": "disabled" if lock_val else "active",
+                "email_sent": email_sent,
+                "email_error": email_error
             })
 
         except Exception as e:
@@ -186,7 +210,7 @@ def bulk_reset_password(identifiers: List[str], request: Request) -> Dict[str, L
 
 
 @router.post("/api/v1/users/bulk-reset-password-with-yopass")
-def bulk_reset_password_with_yopass(identifiers: List[str], request: Request) -> Dict[str, List[Dict[str, Any]]]:
+def bulk_reset_password_with_yopass(identifiers: List[str], request: Request, send_email: bool = False) -> Dict[str, List[Dict[str, Any]]]:
     """
     Массовый сброс паролей из JSON списка с Yopass ссылками
 
@@ -205,16 +229,36 @@ def bulk_reset_password_with_yopass(identifiers: List[str], request: Request) ->
             yopass_link = create_yopass_link(login, password)
             email_list = reset_result['result'].get('mail', [])
             email = email_list[0] if email_list else ""
+            expiration = reset_result['result'].get('krbpasswordexpiration', [None])[0]
             lock_val = reset_result['result'].get('nsaccountlock', False)
             if isinstance(lock_val, list):
                 lock_val = lock_val[0] if lock_val else False
+
+            email_sent = False
+            email_error = None
+            if send_email:
+                if not email:
+                    email_error = "У пользователя не указан email"
+                else:
+                    try:
+                        send_password_reset_email(
+                            recipient=email,
+                            username=login,
+                            yopass_link=yopass_link,
+                            expiration=expiration,
+                        )
+                        email_sent = True
+                    except Exception as e:
+                        email_error = str(e)
             results["success"].append({
                 "identifier": identifier,
                 "username": username,
                 "email": email,
                 "password": password,
                 "yopass_link": yopass_link,
-                "status": "disabled" if lock_val else "active"
+                "status": "disabled" if lock_val else "active",
+                "email_sent": email_sent,
+                "email_error": email_error
             })
         except Exception as e:
             results["failed"].append({"identifier": identifier, "error": str(e)})
@@ -253,7 +297,11 @@ def bulk_disable_preview_list(identifiers: List[str], request: Request) -> Dict[
 
 
 @router.post("/api/v1/users/bulk-reset-password-from-excel")
-async def bulk_reset_password_from_excel(request: Request, file: UploadFile = File(...)) -> Dict[str, List[Dict[str, Any]]]:
+async def bulk_reset_password_from_excel(
+    request: Request,
+    file: UploadFile = File(...),
+    send_email: bool = False,
+) -> Dict[str, List[Dict[str, Any]]]:
     """
     Массовый сброс паролей из Excel файла
 
@@ -279,9 +327,27 @@ async def bulk_reset_password_from_excel(request: Request, file: UploadFile = Fi
             yopass_link = create_yopass_link(login, password)
             email_list = reset_result['result'].get('mail', [])
             email = email_list[0] if email_list else ""
+            expiration = reset_result['result'].get('krbpasswordexpiration', [None])[0]
             lock_val = reset_result['result'].get('nsaccountlock', False)
             if isinstance(lock_val, list):
                 lock_val = lock_val[0] if lock_val else False
+
+            email_sent = False
+            email_error = None
+            if send_email:
+                if not email:
+                    email_error = "У пользователя не указан email"
+                else:
+                    try:
+                        send_password_reset_email(
+                            recipient=email,
+                            username=login,
+                            yopass_link=yopass_link,
+                            expiration=expiration,
+                        )
+                        email_sent = True
+                    except Exception as e:
+                        email_error = str(e)
 
             results["success"].append({
                 "identifier": identifier,
@@ -289,7 +355,9 @@ async def bulk_reset_password_from_excel(request: Request, file: UploadFile = Fi
                 "email": email,
                 "password": password,
                 "yopass_link": yopass_link,
-                "status": "disabled" if lock_val else "active"
+                "status": "disabled" if lock_val else "active",
+                "email_sent": email_sent,
+                "email_error": email_error
             })
 
         except Exception as e:

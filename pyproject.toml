@@ -1,7 +1,7 @@
 [project]
-name = "ipa-api-py"
+name = "conductor"
 version = "0.1.0"
-description = "Add your description here"
+description = "Conductor - система сброса паролей и операторских действий для FreeIPA"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [

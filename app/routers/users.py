@@ -4,6 +4,7 @@ from app.dependencies import user_sessions, get_user_client
 from app.utils.transliteration import transliterate
 from app.utils.validation import is_valid_email
 from app.utils.excel import parse_excel_row, parse_fio, parse_groups
+from app.services.email import send_password_reset_email
 from app.services.yopass import create_yopass_link
 from app.services.freeipa import resolve_username, get_ipa_domain
 from app.models.user import UserCreate
@@ -209,7 +210,7 @@ def enable_user(username: str, request: Request) -> Dict[str, str]:
         )
 
 @router.post("/api/v1/users/{username}/reset-password")
-def reset_password(username: str, request: Request) -> Dict[str, Any]:
+def reset_password(username: str, request: Request, send_email: bool = False) -> Dict[str, Any]:
     """
     Сброс пароля пользователя в FreeIPA
 
@@ -229,16 +230,39 @@ def reset_password(username: str, request: Request) -> Dict[str, Any]:
         result = client._request("user_mod", args=[username], params={"random": True})
 
         password = result['result']['randompassword']
+        email_list = result['result'].get('mail', [])
+        email = email_list[0] if email_list else ""
 
         domain = get_ipa_domain(client)
         login = f"{username}@{domain}" if domain else username
         yopass_link = create_yopass_link(login, password)
+        expiration = result['result'].get('krbpasswordexpiration', [None])[0]
+
+        email_sent = False
+        email_error = None
+        if send_email:
+            if not email:
+                email_error = "У пользователя не указан email"
+            else:
+                try:
+                    send_password_reset_email(
+                        recipient=email,
+                        username=login,
+                        yopass_link=yopass_link,
+                        expiration=expiration,
+                    )
+                    email_sent = True
+                except Exception as e:
+                    email_error = str(e)
 
         response = {
             "username": username,
+            "email": email,
             "password": password,
             "yopass_link": yopass_link,
-            "expiration": result['result'].get('krbpasswordexpiration', [None])[0],
+            "expiration": expiration,
+            "email_sent": email_sent,
+            "email_error": email_error,
             "message": f"Пароль пользователя {username} успешно сброшен"
         }
 

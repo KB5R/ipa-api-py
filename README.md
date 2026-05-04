@@ -1,111 +1,120 @@
-# FreeIPA API
+# Conductor
 
-REST API для управления пользователями FreeIPA с поддержкой массовых операций и интеграцией с Yopass.
+Conductor - система сброса паролей для FreeIPA с веб-интерфейсом для helpdesk и администраторов.
 
-## Описание
+## Что умеет
 
-Модульное FastAPI приложение для управления пользователями FreeIPA. Поддерживает создание пользователей через Excel, массовые операции, генерацию одноразовых ссылок на пароли через Yopass и экспорт отчётов.
+- Сбрасывать пароль одному пользователю по `username` или `email`
+- Выполнять массовый сброс паролей списком или через Excel
+- Выдавать пароль напрямую или через одноразовую ссылку Yopass
+- Отправлять Yopass ссылку пользователю по email через SMTP
+- Искать пользователей, блокировать и разблокировать доступ
+- Создавать пользователей вручную или из Excel
+- Экспортировать отчёты по пользователям и группам
+
+## Стек
+
+- `FastAPI` - backend API
+- `Streamlit` - операторский интерфейс
+- `python-freeipa` - интеграция с FreeIPA
+- `Yopass` - безопасная передача временных паролей
+- `openpyxl` - обработка Excel
 
 ## Структура проекта
 
-```
+```text
 .
-├── app/                          # Основное приложение
-│   ├── __init__.py              # Точка сборки FastAPI приложения
-│   ├── config.py                # Конфигурация и настройка логирования
-│   ├── dependencies.py          # FastAPI dependencies (сессии, аутентификация)
-│   │
-│   ├── models/                  # Pydantic модели данных
-│   │   └── user.py             # Модели пользователей (UserCreate, etc.)
-│   │
-│   ├── routers/                 # API endpoints (роутеры)
-│   │   ├── auth.py             # Аутентификация (login/logout)
-│   │   ├── users.py            # CRUD операции с пользователями
-│   │   ├── bulk.py             # Массовые операции (delete, disable, enable)
-│   │   ├── reports.py          # Отчёты и аналитика
-│   │   └── yopass.py           # Генерация Yopass ссылок
-│   │
-│   ├── services/                # Бизнес-логика и внешние сервисы
-│   │   ├── freeipa.py          # Работа с FreeIPA API
-│   │   └── yopass.py           # Интеграция с Yopass
-│   │
-│   └── utils/                   # Вспомогательные утилиты
-│       ├── transliteration.py  # Транслитерация кириллицы в латиницу
-│       ├── validation.py       # Валидация данных (email, etc.)
-│       └── excel.py            # Парсинг Excel файлов
-│
-├── bin/                         # Бинарные файлы
-│   └── yopass                  # Yopass CLI утилита
-│
-├── templates/                         # Шаблоны
-│   └── freeipa_users_template.xlsx    # Шаблон для создания пользователей(excel)
-│
-├── main.py                      # Точка входа приложения
-├── pyproject.toml              # Зависимости проекта (uv)
-├── .env                        # Переменные окружения
-└── README.md                    # Этот файл
+├── app/                    # FastAPI приложение
+│   ├── routers/            # API endpoints
+│   ├── services/           # FreeIPA и Yopass
+│   ├── models/             # Pydantic модели
+│   └── utils/              # Excel, валидация, транслитерация
+├── frontend/               # Streamlit интерфейс
+├── templates/              # Excel шаблоны
+├── bin/yopass              # Yopass CLI
+└── main.py                 # Точка входа
 ```
 
 ## Быстрый старт
 
-### Установка зависимостей
-
 ```bash
 uv sync
-```
-
-### Запуск сервера
-
-```bash
 uv run main.py
 ```
 
-Сервер запустится на `http://0.0.0.0:8080`
+Backend API будет доступен на `http://0.0.0.0:8080`, Swagger - на `http://localhost:8080/docs`.
 
-## API Documentation
+Отдельно запустите операторский интерфейс:
 
-После запуска доступна автоматическая документация:
+```bash
+uv run streamlit run frontend/app.py
+```
 
-- **Swagger UI**: http://localhost:8080/docs
+По умолчанию Streamlit будет доступен на `http://localhost:8501`.
 
-## 🔧 Архитектурные решения
+## Переменные окружения
 
-### Модульность
-- Код разбит на слои: utils, services, models, routers
-- Каждый роутер отвечает за свою область (auth, users, bulk, reports, yopass)
-- Зависимости вынесены в `dependencies.py`
+Скопируйте `.env.example` в `.env` и заполните значения:
 
-### Явность путей
-- Используются полные пути API (`/api/v1/users/{username}`) вместо префиксов
-- Упрощает понимание структуры и отладку
+```env
+IPA_HOST=ipa.example.com
+YOPASS=/path/to/yopass/binary
+YOPASS_URL=https://your-yopass-instance.com
+API_URL=http://localhost:8080
+APP_NAME=Conductor
+APP_TAGLINE=Система сброса паролей для FreeIPA
+SMTP_HOST=smtp.example.com
+SMTP_PORT=587
+SMTP_USERNAME=helpdesk@example.com
+SMTP_PASSWORD=your_smtp_password
+SMTP_FROM=helpdesk@example.com
+SMTP_USE_TLS=true
+SMTP_USE_SSL=false
+SMTP_SUBJECT=Conductor: сброс пароля FreeIPA
+HELPDESK_EMAIL=helpdesk@example.com
+PASSWORD_RESET_EMAIL_TEMPLATE=/app/templates/password_reset_email.txt
+```
 
-### Сессии
-- Cookie-based аутентификация с автоматической очисткой
-- Время жизни сессии: 60 минут
-- Клиенты FreeIPA переиспользуются в рамках сессии
+Для локальной работы обычно достаточно:
 
-### Транслитерация
-- Автоматическая генерация username из ФИО (Иванов Иван → ivan.ivanov)
-- Стандартная транслитерация кириллицы в латиницу
+- `API_URL=http://localhost:8080`
+- `APP_NAME=Conductor`
+- `APP_TAGLINE=Система сброса паролей для FreeIPA`
 
-## Примеры использования
+## Основной сценарий
 
-### Создание пользователя через Excel
+1. Оператор входит в Conductor через FreeIPA.
+2. Находит пользователя по `username`, имени или `email`.
+3. Сбрасывает пароль.
+4. Передаёт пользователю новый пароль напрямую, через Yopass или автоматически отправляет Yopass ссылку на email.
 
-1. Подготовьте Excel файл со структурой:
-   ```
-   ФИО | Email | Телефон | Должность | Группы
-   ```
+## Отправка на почту
 
-## Безопасность
-- Авторизация через FreeIPA
-- Все пароли генерируются случайно (16 символов)
-- Пароли передаются через Yopass (одноразовые ссылки)
-- Сессии автоматически очищаются после истечения
+Conductor умеет отправлять письмо после сброса пароля, если:
 
-Проект использует:
-- **FastAPI** - API
-- **python-freeipa** - FreeIPA API клиент
-- **openpyxl** - работа с Excel
-- **Yopass** - генерация одноразовых ссылок
-- **Pydantic** - валидация данных
+- у пользователя есть email в FreeIPA;
+- настроен SMTP в `.env`;
+- при сбросе включена опция отправки письма.
+
+В письмо отправляется `Yopass` ссылка, а не открытый пароль.
+
+Шаблон письма по умолчанию лежит в [templates/password_reset_email.txt](/home/mk/project/conductor/templates/password_reset_email.txt).
+Можно переопределить его через `PASSWORD_RESET_EMAIL_TEMPLATE`.
+
+Доступные переменные шаблона:
+
+- `{app_name}`
+- `{username}`
+- `{yopass_link}`
+- `{expiration}`
+- `{expiration_block}`
+- `{helpdesk_email}`
+
+## Доступ
+
+После логина backend проверяет членство в одной из групп:
+
+- `helpdesk`
+- `admins`
+
+При необходимости список можно изменить в [app/routers/auth.py](/home/mk/project/conductor/app/routers/auth.py).

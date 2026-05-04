@@ -9,6 +9,8 @@ import os
 
 load_dotenv()
 API_URL = os.getenv("API_URL")
+APP_NAME = os.getenv("APP_NAME", "Conductor")
+APP_TAGLINE = os.getenv("APP_TAGLINE", "Система сброса паролей для FreeIPA")
 
 for key, default in [
     ("logged_in", False),
@@ -72,11 +74,12 @@ def get_cookies() -> dict:
     return {"ipa_session": st.session_state.session_cookie}
 
 
-def bulk_reset_with_yopass(identifiers: List[str]) -> Optional[dict]:
+def bulk_reset_with_yopass(identifiers: List[str], send_email: bool = False) -> Optional[dict]:
     try:
         response = requests.post(
             f"{API_URL}/api/v1/users/bulk-reset-password-with-yopass",
             json=identifiers,
+            params={"send_email": str(send_email).lower()},
             cookies=get_cookies()
         )
         if response.ok:
@@ -88,11 +91,12 @@ def bulk_reset_with_yopass(identifiers: List[str]) -> Optional[dict]:
         return None
 
 
-def bulk_reset_plain(identifiers: List[str]) -> Optional[dict]:
+def bulk_reset_plain(identifiers: List[str], send_email: bool = False) -> Optional[dict]:
     try:
         response = requests.post(
             f"{API_URL}/api/v1/users/bulk-reset-password",
             json=identifiers,
+            params={"send_email": str(send_email).lower()},
             cookies=get_cookies()
         )
         if response.ok:
@@ -104,11 +108,12 @@ def bulk_reset_plain(identifiers: List[str]) -> Optional[dict]:
         return None
 
 
-def bulk_reset_from_excel(file) -> Optional[dict]:
+def bulk_reset_from_excel(file, send_email: bool = False) -> Optional[dict]:
     try:
         response = requests.post(
             f"{API_URL}/api/v1/users/bulk-reset-password-from-excel",
             files={"file": file},
+            params={"send_email": str(send_email).lower()},
             cookies=get_cookies()
         )
         if response.ok:
@@ -236,10 +241,11 @@ def search_users(q: str) -> Optional[dict]:
         return None
 
 
-def reset_user_password(username: str) -> Optional[dict]:
+def reset_user_password(username: str, send_email: bool = False) -> Optional[dict]:
     try:
         response = requests.post(
             f"{API_URL}/api/v1/users/{username}/reset-password",
+            params={"send_email": str(send_email).lower()},
             cookies=get_cookies()
         )
         if response.ok:
@@ -287,6 +293,44 @@ def bulk_create_from_excel(file) -> Optional[dict]:
 
 def parse_textarea(text: str) -> List[str]:
     return [line.strip() for line in text.strip().split('\n') if line.strip()]
+
+
+def render_yopass_result(link: str, key: str, caption: str = "Ссылка одноразовая, действует 7 дней"):
+    st.text_input(
+        "Yopass ссылка",
+        value=link,
+        disabled=True,
+        key=key
+    )
+    st.caption(caption)
+
+
+def render_plain_password_result(password: str, caption: str = "Сохраните пароль: он показывается только один раз"):
+    st.code(password)
+    st.caption(caption)
+
+
+def render_email_delivery_result(email: str, sent: bool, error: Optional[str] = None):
+    if sent:
+        target = email or "email пользователя"
+        st.success(f"📧 Письмо отправлено: {target}")
+    elif error:
+        st.warning(f"📭 Письмо не отправлено: {error}")
+
+
+def render_resolution_preview(preview: dict, action_summary: str):
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Всего в списке", preview["total"])
+    col2.metric("Найдено", preview["found_count"])
+    col3.metric("Не найдено", preview["not_found_count"])
+
+    for user in preview["found"]:
+        st.success(f"✅ `{user['identifier']}` → **{user['username']}**")
+    for user in preview["not_found"]:
+        st.error(f"❌ `{user['identifier']}` — {user['error']}")
+
+    if preview["found_count"] > 0:
+        st.info(action_summary)
 
 
 def build_reset_excel(result: dict) -> bytes:
@@ -360,16 +404,14 @@ def show_reset_results(result: dict):
             st.caption("🔑 Требует смены пароля при входе")
         with c2:
             if yopass_link:
-                st.text_input(
-                    "",
-                    value=yopass_link,
-                    disabled=True,
-                    label_visibility="collapsed",
-                    key=f"yp_{idx}_{user['username']}"
-                )
+                render_yopass_result(yopass_link, key=f"yp_{idx}_{user['username']}")
             else:
-                st.code(user.get("password", ""))
-                st.caption("Сохраните пароль — он виден только сейчас")
+                render_plain_password_result(user.get("password", ""))
+            render_email_delivery_result(
+                user.get("email", ""),
+                user.get("email_sent", False),
+                user.get("email_error"),
+            )
     for fail in result["failed"]:
         st.error(f"❌ **{fail['identifier']}** — {fail['error']}")
 
@@ -377,8 +419,10 @@ def show_reset_results(result: dict):
 # === PAGES ===
 
 def page_passwords():
+    st.caption("Основной сценарий: проверить список пользователей, сбросить пароль и передать его через Yopass или напрямую.")
+
     text_input = st.text_area(
-        "Вставьте username или email (каждый с новой строки)",
+        "Вставьте username или email, по одному в строке",
         placeholder="ivan.ivanov\npetr@company.com\nmaria.sidorova",
         height=130,
         key="pwd_text_input"
@@ -409,34 +453,32 @@ def page_passwords():
     if st.session_state.pwd_preview:
         preview = st.session_state.pwd_preview
         st.markdown("---")
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Всего в списке", preview["total"])
-        col2.metric("Найдено", preview["found_count"])
-        col3.metric("Не найдено", preview["not_found_count"])
-        st.markdown("---")
-
-        for u in preview["found"]:
-            st.success(f"✅ `{u['identifier']}` → **{u['username']}**")
-        for u in preview["not_found"]:
-            st.error(f"❌ `{u['identifier']}` — {u['error']}")
+        render_resolution_preview(
+            preview,
+            f"Будет выполнен сброс пароля для **{preview['found_count']}** пользователей."
+        )
 
         if preview["found_count"] > 0:
-            st.markdown("---")
-            st.warning(f"Пароли будут сброшены для **{preview['found_count']}** пользователей")
             skip_yopass = st.checkbox(
                 "Показать пароли напрямую (без Yopass)",
                 value=st.session_state.show_passwords_mode,
                 key="pwd_skip_yopass",
                 help="Yopass не будет использован — пароль будет показан в открытом виде"
             )
+            send_email = st.checkbox(
+                "Отправить Yopass ссылку на email автоматически",
+                value=False,
+                key="pwd_send_email",
+                help="Если у пользователя указан email и SMTP настроен, письмо уйдет автоматически"
+            )
             st.session_state.show_passwords_mode = skip_yopass
             if st.button("Сбросить пароли", use_container_width=True, key="pwd_reset_btn", type="primary"):
                 identifiers = [u["identifier"] for u in preview["found"]]
                 with st.spinner("Сбрасываем пароли..."):
                     if skip_yopass:
-                        result = bulk_reset_plain(identifiers)
+                        result = bulk_reset_plain(identifiers, send_email=send_email)
                     else:
-                        result = bulk_reset_with_yopass(identifiers)
+                        result = bulk_reset_with_yopass(identifiers, send_email=send_email)
                 if result:
                     st.session_state.pwd_results = result
                     st.session_state.pwd_preview = None
@@ -451,6 +493,8 @@ def page_passwords():
 def page_state_management():
     mode = st.radio("", ["Заблокировать", "Разблокировать"], horizontal=True, key="state_mode")
     is_disable = mode == "Заблокировать"
+    mode_caption = "Проверьте список перед изменением статуса учётных записей."
+    st.caption(mode_caption)
     st.markdown("---")
 
     # Если режим сменился — сбрасываем preview/results предыдущего режима
@@ -491,22 +535,14 @@ def page_state_management():
     if st.session_state.state_preview:
         preview = st.session_state.state_preview
         st.markdown("---")
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Всего в списке", preview["total"])
-        col2.metric("Найдено", preview["found_count"])
-        col3.metric("Не найдено", preview["not_found_count"])
-        st.markdown("---")
-
-        for u in preview["found"]:
-            st.success(f"✅ `{u['identifier']}` → **{u['username']}**")
-        for u in preview["not_found"]:
-            st.error(f"❌ `{u['identifier']}` — {u['error']}")
+        action_label = "заблокировано" if is_disable else "разблокировано"
+        btn_label = "Заблокировать" if is_disable else "Разблокировать"
+        render_resolution_preview(
+            preview,
+            f"Будет {action_label} **{preview['found_count']}** пользователей."
+        )
 
         if preview["found_count"] > 0:
-            st.markdown("---")
-            action_label = "заблокировано" if is_disable else "разблокировано"
-            btn_label = "Заблокировать" if is_disable else "Разблокировать"
-            st.warning(f"Будет {action_label} **{preview['found_count']}** пользователей")
             if st.button(btn_label, use_container_width=True, key="state_exec_btn", type="primary"):
                 usernames = [u["username"] for u in preview["found"]]
                 spinner_text = "Блокируем..." if is_disable else "Разблокируем..."
@@ -540,6 +576,8 @@ def page_state_management():
 
 
 def page_create_single():
+    st.caption("Создание одной учётной записи с возможностью сразу добавить пользователя в группы FreeIPA.")
+
     # Загружаем группы один раз и кешируем
     if st.session_state.groups_list is None:
         with st.spinner("Загружаем список групп..."):
@@ -577,14 +615,7 @@ def page_create_single():
                 if result:
                     st.success(f"Пользователь **{result['username']}** создан!")
                     if result.get("yopass_link"):
-                        st.text_input(
-                            "Yopass ссылка:",
-                            value=result["yopass_link"],
-                            disabled=True,
-                            label_visibility="collapsed",
-                            key="create_single_yopass"
-                        )
-                        st.info("Ссылка одноразовая, действует 7 дней")
+                        render_yopass_result(result["yopass_link"], key="create_single_yopass")
                     if result.get("groups"):
                         if result["groups"].get("added"):
                             st.success(f"Добавлен в группы: {', '.join(result['groups']['added'])}")
@@ -593,6 +624,7 @@ def page_create_single():
 
 
 def page_create_excel():
+    st.caption("Массовое создание пользователей из Excel-шаблона.")
     st.markdown(f"**Шаг 1:** [Скачать шаблон Excel]({API_URL}/api/v1/templates/templates-excel)")
     st.markdown("**Шаг 2:** Загрузите заполненный файл")
 
@@ -613,19 +645,14 @@ def page_create_excel():
                     with c1:
                         st.success(f"✅ **{user['username']}**\n{user['email']}")
                     with c2:
-                        st.text_input(
-                            "",
-                            value=user["yopass_link"],
-                            disabled=True,
-                            label_visibility="collapsed",
-                            key=f"create_yopass_{idx}"
-                        )
+                        render_yopass_result(user["yopass_link"], key=f"create_yopass_{idx}")
                 for fail in result["failed"]:
                     st.error(f"❌ Строка {fail['row']}: {fail['error']}")
 
 
 def page_reports():
     st.markdown("### Экспорт пользователей и групп в CSV")
+    st.caption("Отчёт собирается из FreeIPA и выгружается в CSV для дальнейшего анализа.")
 
     if st.button("Сформировать CSV", use_container_width=True, key="reports_btn"):
         with st.spinner("Генерируем отчёт..."):
@@ -655,6 +682,8 @@ def page_reports():
 
 
 def page_search_users():
+    st.caption("Найдите пользователя, чтобы быстро сбросить пароль или изменить статус учётной записи.")
+
     with st.form("search_form"):
         col1, col2 = st.columns([4, 1])
         with col1:
@@ -723,17 +752,30 @@ def page_search_users():
                     key="search_skip_yopass",
                     help="Пароль будет показан в открытом виде, без создания Yopass ссылки"
                 )
+                send_email = st.checkbox(
+                    "Отправить Yopass ссылку на email",
+                    value=False,
+                    key="search_send_email",
+                    help="Если SMTP настроен, письмо уйдет на адрес пользователя"
+                )
                 st.session_state.show_passwords_mode = skip_yopass
             with col_r:
                 if st.button("🔑 Сбросить пароль", use_container_width=True, key="search_reset_btn"):
                     with st.spinner("Сбрасываем..."):
                         if st.session_state.show_passwords_mode:
-                            bulk_res = bulk_reset_plain([user["username"]])
+                            bulk_res = bulk_reset_plain([user["username"]], send_email=send_email)
                             res = bulk_res["success"][0] if bulk_res and bulk_res.get("success") else None
                             if res:
-                                res = {"username": res["username"], "password": res["password"], "yopass_link": ""}
+                                res = {
+                                    "username": res["username"],
+                                    "email": res.get("email", ""),
+                                    "password": res["password"],
+                                    "yopass_link": "",
+                                    "email_sent": res.get("email_sent", False),
+                                    "email_error": res.get("email_error"),
+                                }
                         else:
-                            res = reset_user_password(user["username"])
+                            res = reset_user_password(user["username"], send_email=send_email)
                     if res:
                         st.session_state.search_action_result = {"type": "reset", "data": res}
                         st.rerun()
@@ -762,17 +804,14 @@ def page_search_users():
                 data = action_res["data"]
                 st.success(f"✅ Пароль сброшен для **{data['username']}**")
                 if data.get("yopass_link"):
-                    st.text_input(
-                        "",
-                        value=data["yopass_link"],
-                        disabled=True,
-                        label_visibility="collapsed",
-                        key="search_yopass"
-                    )
-                    st.caption("Ссылка одноразовая, действует 7 дней")
+                    render_yopass_result(data["yopass_link"], key="search_yopass")
                 else:
-                    st.code(data.get("password", ""))
-                    st.caption("Сохраните пароль — он виден только сейчас")
+                    render_plain_password_result(data.get("password", ""))
+                render_email_delivery_result(
+                    data.get("email", ""),
+                    data.get("email_sent", False),
+                    data.get("email_error"),
+                )
             elif action_res["type"] == "blocked":
                 st.success(f"✅ **{action_res['username']}** заблокирован")
             elif action_res["type"] == "unblocked":
@@ -780,8 +819,9 @@ def page_search_users():
 
 
 # === APP CONFIG ===
-st.set_page_config(page_title="FreeIPA Portal", page_icon="", layout="wide")
-st.title("FreeIPA Portal")
+st.set_page_config(page_title=APP_NAME, page_icon="", layout="wide")
+st.title(APP_NAME)
+st.caption(APP_TAGLINE)
 
 # === LOGIN ===
 if not st.session_state.logged_in:
@@ -789,6 +829,7 @@ if not st.session_state.logged_in:
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         st.subheader("Вход в систему")
+        st.caption("Авторизация через FreeIPA. Доступ разрешён пользователям из групп `helpdesk` и `admins`.")
         with st.form("login_form"):
             username = st.text_input("Username", key="login_username")
             password = st.text_input("Password", type="password", key="login_password")
@@ -810,7 +851,7 @@ else:
 
     st.markdown("---")
 
-    tab1, tab2, tab3, tab4 = st.tabs(["Пароли", "Управление состояниями", "Пользователи", "Аналитика"])
+    tab1, tab2, tab3, tab4 = st.tabs(["Сброс паролей", "Блокировка и доступ", "Пользователи", "Аналитика"])
 
     with tab1:
         page_passwords()
@@ -832,4 +873,4 @@ else:
         page_reports()
 
 st.markdown("---")
-st.markdown("*FreeIPA Portal — Управление пользователями*")
+st.markdown(f"*{APP_NAME} — {APP_TAGLINE.lower()}*")
